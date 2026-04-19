@@ -12,35 +12,37 @@
       --text: #1f2430;
       --muted: #667085;
       --border: #d8dbe5;
-      --accent: #153b8a;
-      --match: #b06a00;
-      --faint: #c6ccd8;
     }
     html, body { margin:0; height:100%; font-family: Inter, Arial, sans-serif; background: var(--bg); }
-    #app { display:grid; grid-template-columns: 360px 1fr; height:100vh; }
+    #app { display:grid; grid-template-columns: 390px 1fr; height:100vh; }
     #sidebar { padding:18px; border-right:1px solid var(--border); overflow:auto; background:var(--panel); color:var(--text); box-sizing:border-box; }
     #map { width:100%; height:100%; }
     h1 { margin:0 0 8px; font-size:22px; }
-    .sub, .small { color: var(--muted); line-height:1.45; }
+    .sub, .small { color: #667085; line-height:1.45; }
     .sub { font-size:13px; margin:0 0 14px; }
     .small { font-size:12px; }
     label { display:block; font-size:13px; margin:14px 0 6px; font-weight:700; }
     select, button, input[type=checkbox] { font-size:14px; }
-    select, button { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:#fff; box-sizing:border-box; }
+    select, button { width:100%; padding:10px 12px; border:1px solid #d8dbe5; border-radius:10px; background:#fff; box-sizing:border-box; }
     button { margin-top:10px; cursor:pointer; font-weight:700; }
     .checkrow { margin-top:12px; display:flex; align-items:flex-start; gap:10px; }
     .checkrow input { margin-top:3px; }
-    .card { margin-top:16px; padding:12px; border:1px solid var(--border); border-radius:14px; background:#fff; }
+    .card { margin-top:16px; padding:12px; border:1px solid #d8dbe5; border-radius:14px; background:#fff; }
     .card h2 { margin:0 0 10px; font-size:16px; }
-    .match-item { padding:8px 10px; border:1px solid var(--border); border-radius:10px; margin-top:8px; background:#fff; cursor:pointer; }
+    .match-item { padding:10px; border:1px solid #d8dbe5; border-radius:12px; margin-top:10px; background:#fff; cursor:pointer; }
     .match-item:hover { background:#f7f9fc; }
-    .stats { margin-top:14px; font-size:13px; color:var(--muted); line-height:1.5; }
+    .match-title { font-weight:800; font-size:14px; }
+    .match-meta { margin-top:4px; color:#667085; font-size:12px; }
+    .match-link { margin-top:6px; font-size:12px; }
+    .match-link a { color:#153b8a; text-decoration:none; }
+    .match-link a:hover { text-decoration:underline; }
+    .stats { margin-top:14px; font-size:13px; color:#667085; line-height:1.5; }
     .leaflet-popup-content { margin: 12px 14px; line-height:1.45; min-width:240px; }
     .popup-title { font-weight:800; font-size:15px; margin-bottom:6px; }
     .popup-row { margin-top:4px; font-size:13px; }
     @media (max-width: 950px) {
       #app { grid-template-columns:1fr; grid-template-rows:auto 1fr; }
-      #sidebar { border-right:0; border-bottom:1px solid var(--border); }
+      #sidebar { border-right:0; border-bottom:1px solid #d8dbe5; }
       #map { min-height:65vh; }
     }
   </style>
@@ -49,7 +51,7 @@
 <div id="app">
   <div id="sidebar">
     <h1>Beyond Co-Location Map</h1>
-    <p class="sub"><strong>Beyond</strong> stays on the map at all times. Pick a Beyond stop to see which ships are in the same port that day, with an option to show their full routes.</p>
+    <p class="sub"><strong>Beyond</strong> stays on the map at all times. Pick a Beyond stop to see which cruises are in the same port that day. Click a route card to highlight that ship's full route.</p>
 
     <label for="anchorStopFilter">Beyond stop</label>
     <select id="anchorStopFilter"></select>
@@ -92,7 +94,7 @@ let portsData = null;
 let routesData = null;
 let portsLayer = null;
 let routesLayer = null;
-let highlightLayer = null;
+let selectedRouteId = null;
 
 const anchorStopFilter = document.getElementById('anchorStopFilter');
 const showFullRoutes = document.getElementById('showFullRoutes');
@@ -101,6 +103,17 @@ const resetBtn = document.getElementById('resetBtn');
 const stats = document.getElementById('stats');
 const matchList = document.getElementById('matchList');
 const selectedStopText = document.getElementById('selectedStopText');
+
+const PALETTE = ['#c0392b','#8e44ad','#2980b9','#16a085','#d35400','#2c3e50','#27ae60','#7f8c8d','#e67e22','#6c5ce7','#00a8ff','#e84393'];
+const routeColorMap = new Map();
+
+function colorForRoute(routeId) {
+  if (routeId === 'BEYOND_ANCHOR') return '#153b8a';
+  if (!routeColorMap.has(routeId)) {
+    routeColorMap.set(routeId, PALETTE[routeColorMap.size % PALETTE.length]);
+  }
+  return routeColorMap.get(routeId);
+}
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -120,25 +133,33 @@ function samePortDay(props, stop) {
   return props.port_name === stop.port_name && props.day_key === stop.day_key;
 }
 
-function isMatchingShipForStop(ship, stop) {
-  if (!ship || ship === ANCHOR_SHIP) return false;
-  return portsData.features.some(f => f.properties.ship === ship && samePortDay(f.properties, stop));
+function matchesStopByRoute(routeId, stop) {
+  return portsData.features.some(f => f.properties.route_id === routeId && f.properties.ship !== ANCHOR_SHIP && samePortDay(f.properties, stop));
 }
 
-function getMatchingShips(stop) {
-  const ships = new Set();
+function getMatchingRoutes(stop) {
+  const routes = new Map();
   portsData.features.forEach(f => {
     const p = f.properties;
-    if (p.ship !== ANCHOR_SHIP && samePortDay(p, stop)) ships.add(p.ship);
+    if (p.ship !== ANCHOR_SHIP && samePortDay(p, stop)) {
+      if (!routes.has(p.route_id)) {
+        routes.set(p.route_id, {
+          route_id: p.route_id,
+          ship: p.ship,
+          cruise_line: p.cruise_line,
+          itinerary_link: p.itinerary_link || ''
+        });
+      }
+    }
   });
-  return [...ships].sort();
+  return [...routes.values()].sort((a,b) => String(a.route_id).localeCompare(String(b.route_id)));
 }
 
 function routeVisible(props, stop) {
   if (props.ship === ANCHOR_SHIP) return true;
-  const matchingShip = isMatchingShipForStop(props.ship, stop);
-  if (matchingShip && showFullRoutes.checked) return true;
-  if (matchingShip) {
+  const matchingRoute = matchesStopByRoute(props.route_id, stop);
+  if (matchingRoute && showFullRoutes.checked) return true;
+  if (matchingRoute) {
     return (props.from_port === stop.port_name && props.from_day_key === stop.day_key) ||
            (props.to_port === stop.port_name && props.to_day_key === stop.day_key);
   }
@@ -147,21 +168,25 @@ function routeVisible(props, stop) {
 
 function portVisible(props, stop) {
   if (props.ship === ANCHOR_SHIP) return true;
-  const matchingShip = isMatchingShipForStop(props.ship, stop);
-  if (matchingShip && showFullRoutes.checked) return true;
-  if (matchingShip) return samePortDay(props, stop);
+  const matchingRoute = matchesStopByRoute(props.route_id, stop);
+  if (matchingRoute && showFullRoutes.checked) return true;
+  if (matchingRoute) return samePortDay(props, stop);
   return showNonMatching.checked;
 }
 
 function routeStyle(props, stop) {
   if (props.ship === ANCHOR_SHIP) return { color: '#153b8a', weight: 4, opacity: 0.95 };
-  const matchingShip = isMatchingShipForStop(props.ship, stop);
-  if (matchingShip) {
+  const matchingRoute = matchesStopByRoute(props.route_id, stop);
+  const baseColor = colorForRoute(props.route_id);
+  if (selectedRouteId && props.route_id === selectedRouteId) {
+    return { color: baseColor, weight: 6, opacity: 1 };
+  }
+  if (matchingRoute) {
     const exactMatchSegment = (props.from_port === stop.port_name && props.from_day_key === stop.day_key) ||
                               (props.to_port === stop.port_name && props.to_day_key === stop.day_key);
     return exactMatchSegment
-      ? { color: '#b06a00', weight: 4, opacity: 0.95 }
-      : { color: '#d7a449', weight: 2.5, opacity: 0.65 };
+      ? { color: baseColor, weight: 4.5, opacity: 0.95 }
+      : { color: baseColor, weight: 2.8, opacity: 0.72 };
   }
   return { color: '#c6ccd8', weight: 2, opacity: 0.35 };
 }
@@ -171,12 +196,16 @@ function pointStyle(props, stop) {
     const selected = samePortDay(props, stop);
     return { radius: selected ? 9 : 7, weight: 2, color: '#ffffff', fillColor: '#153b8a', fillOpacity: 1 };
   }
-  const matchingShip = isMatchingShipForStop(props.ship, stop);
-  if (matchingShip) {
+  const matchingRoute = matchesStopByRoute(props.route_id, stop);
+  const baseColor = colorForRoute(props.route_id);
+  if (selectedRouteId && props.route_id === selectedRouteId) {
+    return { radius: samePortDay(props, stop) ? 8.5 : 6.5, weight: 2, color: '#ffffff', fillColor: baseColor, fillOpacity: 1 };
+  }
+  if (matchingRoute) {
     const selected = samePortDay(props, stop);
     return selected
-      ? { radius: 8, weight: 2, color: '#ffffff', fillColor: '#b06a00', fillOpacity: 1 }
-      : { radius: 5.5, weight: 1, color: '#ffffff', fillColor: '#d7a449', fillOpacity: 0.9 };
+      ? { radius: 8, weight: 2, color: '#ffffff', fillColor: baseColor, fillOpacity: 1 }
+      : { radius: 5.5, weight: 1, color: '#ffffff', fillColor: baseColor, fillOpacity: 0.9 };
   }
   return { radius: 4.5, weight: 1, color: '#ffffff', fillColor: '#c6ccd8', fillOpacity: 0.7 };
 }
@@ -184,10 +213,11 @@ function pointStyle(props, stop) {
 function portPopupHtml(p, stop) {
   const relationship = p.ship === ANCHOR_SHIP
     ? 'Anchor ship'
-    : (samePortDay(p, stop) ? 'In port with Beyond at this stop' : 'Other stop on matching ship route');
-  const linkHtml = p.itinerary_link ? `<div class="popup-row"><a href="${escapeHtml(p.itinerary_link)}" target="_blank" rel="noopener noreferrer">Open itinerary link</a></div>` : '';
+    : (samePortDay(p, stop) ? 'In port with Beyond at this stop' : 'Other stop on matching route');
+  const linkHtml = p.itinerary_link ? `<div class="popup-row"><a href="${escapeHtml(p.itinerary_link)}" target="_blank" rel="noopener noreferrer">Open booking / itinerary link</a></div>` : '';
   return `
-    <div class="popup-title">${escapeHtml(p.ship)}</div>
+    <div class="popup-title">${escapeHtml(p.route_id)}</div>
+    <div class="popup-row"><strong>Ship:</strong> ${escapeHtml(p.ship)}</div>
     <div class="popup-row"><strong>Cruise line:</strong> ${escapeHtml(p.cruise_line)}</div>
     <div class="popup-row"><strong>Date:</strong> ${escapeHtml(p.display_date || p.day_key)}</div>
     <div class="popup-row"><strong>Port:</strong> ${escapeHtml(p.port_name)}</div>
@@ -200,45 +230,79 @@ function portPopupHtml(p, stop) {
 function routePopupHtml(p, stop) {
   const relationship = p.ship === ANCHOR_SHIP
     ? 'Anchor ship route'
-    : (isMatchingShipForStop(p.ship, stop) ? 'Matching ship route' : 'Non-matching ship route');
+    : (matchesStopByRoute(p.route_id, stop) ? 'Matching route' : 'Non-matching route');
+  const linkHtml = p.itinerary_link ? `<div class="popup-row"><a href="${escapeHtml(p.itinerary_link)}" target="_blank" rel="noopener noreferrer">Open booking / itinerary link</a></div>` : '';
   return `
-    <div class="popup-title">${escapeHtml(p.ship)}</div>
+    <div class="popup-title">${escapeHtml(p.route_id)}</div>
+    <div class="popup-row"><strong>Ship:</strong> ${escapeHtml(p.ship)}</div>
     <div class="popup-row"><strong>Cruise line:</strong> ${escapeHtml(p.cruise_line)}</div>
     <div class="popup-row"><strong>Segment:</strong> ${escapeHtml(p.from_port)} → ${escapeHtml(p.to_port)}</div>
     <div class="popup-row"><strong>Dates:</strong> ${escapeHtml(p.from_display_date)} → ${escapeHtml(p.to_display_date)}</div>
     <div class="popup-row"><strong>Status:</strong> ${escapeHtml(relationship)}</div>
+    ${linkHtml}
   `;
 }
 
 function renderMatchList(stop) {
-  const ships = getMatchingShips(stop);
+  const routes = getMatchingRoutes(stop);
   selectedStopText.innerHTML = `<strong>${escapeHtml(stop.display_date)}</strong><br>${escapeHtml(stop.port_name)}`;
   matchList.innerHTML = '';
-  if (!ships.length) {
+  if (!routes.length) {
     matchList.innerHTML = '<div class="small">No other ships in port with Beyond at this stop.</div>';
     return;
   }
-  ships.forEach(ship => {
+  routes.forEach(item => {
     const div = document.createElement('div');
     div.className = 'match-item';
-    div.textContent = ship;
-    div.addEventListener('click', () => zoomToShip(ship, stop));
+    const color = colorForRoute(item.route_id);
+    const linkHtml = item.itinerary_link
+      ? `<div class="match-link"><a href="${escapeHtml(item.itinerary_link)}" target="_blank" rel="noopener noreferrer">Booking / itinerary link</a></div>`
+      : '';
+    div.innerHTML = `
+      <div class="match-title" style="color:${color};">${escapeHtml(item.route_id)}</div>
+      <div class="match-meta">${escapeHtml(item.ship)} · ${escapeHtml(item.cruise_line)}</div>
+      ${linkHtml}
+    `;
+    div.addEventListener('click', (e) => {
+      if (e.target.tagName.toLowerCase() !== 'a') {
+        selectedRouteId = (selectedRouteId === item.route_id) ? null : item.route_id;
+        render();
+        zoomToRoute(item.route_id);
+        openRoutePopup(item.route_id);
+      }
+    });
     matchList.appendChild(div);
   });
 }
 
-function zoomToShip(ship, stop) {
+function zoomToRoute(routeId) {
   const layers = [];
   if (portsLayer) {
     portsLayer.eachLayer(layer => {
       const p = layer.feature.properties;
-      if (p.ship === ship || p.ship === ANCHOR_SHIP) layers.push(layer);
+      if (p.route_id === routeId || p.ship === ANCHOR_SHIP) layers.push(layer);
+    });
+  }
+  if (routesLayer) {
+    routesLayer.eachLayer(layer => {
+      const p = layer.feature.properties;
+      if (p.route_id === routeId || p.ship === ANCHOR_SHIP) layers.push(layer);
     });
   }
   if (layers.length) {
     const fg = L.featureGroup(layers);
     map.fitBounds(fg.getBounds().pad(0.2));
   }
+}
+
+function openRoutePopup(routeId) {
+  if (!routesLayer) return;
+  let target = null;
+  routesLayer.eachLayer(layer => {
+    const p = layer.feature.properties;
+    if (p.route_id === routeId && !target) target = layer;
+  });
+  if (target) target.openPopup();
 }
 
 function render() {
@@ -251,7 +315,16 @@ function render() {
   routesLayer = L.geoJSON(routesData, {
     filter: feature => routeVisible(feature.properties, stop),
     style: feature => routeStyle(feature.properties, stop),
-    onEachFeature: (feature, layer) => layer.bindPopup(routePopupHtml(feature.properties, stop))
+    onEachFeature: (feature, layer) => {
+      layer.bindPopup(routePopupHtml(feature.properties, stop));
+      layer.on('click', () => {
+        if (feature.properties.ship !== ANCHOR_SHIP) {
+          selectedRouteId = feature.properties.route_id;
+          render();
+          openRoutePopup(feature.properties.route_id);
+        }
+      });
+    }
   }).addTo(map);
 
   portsLayer = L.geoJSON(portsData, {
@@ -259,16 +332,19 @@ function render() {
     pointToLayer: (feature, latlng) => L.circleMarker(latlng, pointStyle(feature.properties, stop)),
     onEachFeature: (feature, layer) => {
       layer.bindPopup(portPopupHtml(feature.properties, stop));
-      if (feature.properties.ship === ANCHOR_SHIP && samePortDay(feature.properties, stop)) {
-        layer.openPopup = layer.openPopup.bind(layer);
-      }
+      layer.on('click', () => {
+        if (feature.properties.ship !== ANCHOR_SHIP) {
+          selectedRouteId = feature.properties.route_id;
+          render();
+        }
+      });
     }
   }).addTo(map);
 
   const visiblePorts = portsLayer.getLayers().length;
   const visibleRoutes = routesLayer.getLayers().length;
-  const matches = getMatchingShips(stop).length;
-  stats.innerHTML = `<strong>${matches}</strong> matching ships at selected Beyond stop<br><strong>${visiblePorts}</strong> visible ports<br><strong>${visibleRoutes}</strong> visible route segments`;
+  const matches = getMatchingRoutes(stop).length;
+  stats.innerHTML = `<strong>${matches}</strong> matching routes at selected Beyond stop<br><strong>${visiblePorts}</strong> visible ports<br><strong>${visibleRoutes}</strong> visible route segments`;
 
   const group = L.featureGroup([routesLayer, portsLayer]);
   if (group.getLayers().length) map.fitBounds(group.getBounds().pad(0.12));
@@ -292,13 +368,23 @@ Promise.all([
   populateAnchorStops();
   render();
 
-  anchorStopFilter.addEventListener('change', render);
-  showFullRoutes.addEventListener('change', render);
-  showNonMatching.addEventListener('change', render);
+  anchorStopFilter.addEventListener('change', () => {
+    selectedRouteId = null;
+    render();
+  });
+  showFullRoutes.addEventListener('change', () => {
+    selectedRouteId = null;
+    render();
+  });
+  showNonMatching.addEventListener('change', () => {
+    selectedRouteId = null;
+    render();
+  });
   resetBtn.addEventListener('click', () => {
     anchorStopFilter.value = '0';
     showFullRoutes.checked = true;
     showNonMatching.checked = false;
+    selectedRouteId = null;
     render();
   });
 }).catch(err => {

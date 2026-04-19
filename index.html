@@ -287,36 +287,6 @@
       color: var(--ink-soft);
     }
 
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .stat {
-      padding: 12px;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.68);
-      border: 1px solid rgba(17, 39, 57, 0.08);
-    }
-
-    .stat strong {
-      display: block;
-      font-size: 20px;
-      line-height: 1;
-      color: var(--brand-deep);
-    }
-
-    .stat span {
-      display: block;
-      margin-top: 6px;
-      font-size: 11px;
-      line-height: 1.35;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--ink-soft);
-    }
-
     .results {
       min-height: 0;
       padding: 16px;
@@ -334,9 +304,6 @@
 
     .results-title {
       margin: 0;
-      font-size: 16px;
-      font-weight: 800;
-      color: var(--brand-deep);
     }
 
     .results-subtitle {
@@ -654,10 +621,6 @@
         align-items: start;
       }
 
-      .stats-row {
-        grid-template-columns: 1fr;
-      }
-
       #map,
       .map-wash {
         height: 56vh;
@@ -714,13 +677,12 @@
             <span>Ships in port</span>
           </div>
         </div>
-        <div id="statsRow" class="stats-row"></div>
       </section>
 
       <section class="surface results">
         <div class="results-header">
           <div>
-            <h3 class="results-title">Other cruises in port</h3>
+            <p class="section-label results-title" style="margin: 0 0 6px;">Other cruises in port</p>
             <p id="resultsSubtitle" class="results-subtitle"></p>
           </div>
           <button id="resetBtn" class="ghost-btn" type="button">Reset selection</button>
@@ -786,7 +748,6 @@
     const summaryTitle = document.getElementById("summaryTitle");
     const summaryCopy = document.getElementById("summaryCopy");
     const summaryCount = document.getElementById("summaryCount");
-    const statsRow = document.getElementById("statsRow");
     const resultsSubtitle = document.getElementById("resultsSubtitle");
     const matchList = document.getElementById("matchList");
 
@@ -984,7 +945,7 @@
       });
     }
 
-    function renderSummary(stop, matchingRoutes, visiblePorts, visibleRouteSegments) {
+    function renderSummary(stop, matchingRoutes) {
       const count = matchingRoutes.length;
       summaryTitle.textContent = stop.display_date + " - " + stop.port_name;
       summaryCopy.textContent = count
@@ -992,16 +953,6 @@
         : "Beyond has this port to itself on the selected date.";
       summaryCount.textContent = String(count);
       resultsSubtitle.textContent = VIEW_MODES[state.viewMode] + " view";
-
-      const stats = [
-        { value: count, label: "Matching ships" },
-        { value: visiblePorts, label: "Visible port markers" },
-        { value: visibleRouteSegments, label: "Visible route segments" }
-      ];
-
-      statsRow.innerHTML = stats.map((item) => {
-        return '<div class="stat"><strong>' + escapeHtml(item.value) + '</strong><span>' + escapeHtml(item.label) + '</span></div>';
-      }).join("");
     }
 
     function zoomToRoute(routeId) {
@@ -1143,9 +1094,7 @@
       renderLayers(stop, matchingSet);
       renderMatchList(stop, matchingRoutes);
 
-      const visiblePorts = portsLayer ? portsLayer.getLayers().length : 0;
-      const visibleRouteSegments = routesLayer ? routesLayer.getLayers().length : 0;
-      renderSummary(stop, matchingRoutes, visiblePorts, visibleRouteSegments);
+      renderSummary(stop, matchingRoutes);
 
       if (fitBounds) {
         fitToVisibleLayers();

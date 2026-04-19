@@ -1,68 +1,49 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Index Page</title>
-    <link rel="stylesheet" href="styles.css">
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f4f4;
-        }
-        header {
-            background: #35424a;
-            color: #ffffff;
-            padding: 20px;
-            text-align: center;
-        }
-        .container {
-            width: 80%;
-            margin: auto;
-            overflow: hidden;
-        }
-        .main {
-            padding: 20px;
-            background: white;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        footer {
-            background: #35424a;
-            color: #ffffff;
-            text-align: center;
-            padding: 10px;
-            position: relative;
-            bottom: 0;
-            width: 100%;
-        }
-        @media (max-width: 600px) {
-            .container {
-                width: 95%;
-            }
-            header, footer {
-                padding: 15px;
-            }
-        }
-    </style>
+    <title>Cruise Routes</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-curve/src/leaflet.curve.js"></script>
 </head>
 <body>
-    <header>
-        <h1>Welcome to Our Site</h1>
-    </header>
-    <div class="container">
-        <div class="main">
-            <h2>Improved User Experience</h2>
-            <p>Explore our new features and enhancements designed for better usability.</p>
-            <button onclick="alert('Thanks for clicking!')" style="padding: 10px 15px; background-color: #35424a; color: white; border: none; border-radius: 5px; cursor: pointer; transition: background 0.3s;">
-                Click Me!
-            </button>
-        </div>
-    </div>
-    <footer>
-        <p>&copy; 2026 Your Company. All rights reserved.</p>
-    </footer>
+    <div id="map" style="width: 100%; height: 600px;"></div>
+    <script>
+        var map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        // Sample coordinates for cruise route
+        var ports = [
+            [35.6762, 139.6503], // Tokyo
+            [34.0522, -118.2437], // Los Angeles
+            [51.5074, -0.1278], // London
+            [48.8566, 2.3522] // Paris
+        ];
+
+        function drawCurvedPath(ports) {
+            for (let i = 0; i < ports.length - 1; i++) {
+                let start = ports[i];
+                let end = ports[i + 1];
+                let midPoint = [
+                    (start[0] + end[0]) / 2,
+                    (start[1] + end[1]) / 2
+                ];
+
+                // Calculate control point for quadratic bezier curve
+                let controlPoint = [
+                    midPoint[0] + (end[0] - start[0]) * 0.15,
+                    midPoint[1] + (end[1] - start[1]) * 0.15
+                ];
+
+                L.curve(['M', start, 'Q', controlPoint, end], {
+                    color: 'blue',
+                    opacity: 0.7,
+                    dashArray: '5, 10'
+                }).addTo(map);
+            }
+        }
+
+        drawCurvedPath(ports);
+    </script>
 </body>
 </html>
